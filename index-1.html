@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#101827"><title>SOL Crypto Watchtower</title>
+<style>
+:root{font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#edf2ff;background:#101827}*{box-sizing:border-box}body{margin:0;max-width:720px;margin:auto;padding:20px 16px 70px}h1{font-size:1.6rem;margin:4px 0}h2{font-size:1.08rem;margin:0 0 12px}.sub,.muted{color:#aab8d2}.sub{margin:0 0 20px}.card{background:#1b2940;border:1px solid #304361;border-radius:18px;padding:18px;margin:14px 0}.row{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.price{font-size:1.7rem;font-weight:750}.tag{font-size:.9rem;color:#bacbe8}.up{color:#72e3b2}.down{color:#ff9b9b}button{border:0;border-radius:12px;padding:12px 16px;background:#806af4;color:white;font-weight:700;font-size:1rem;cursor:pointer}button:disabled{opacity:.5}input{background:#101827;color:#fff;border:1px solid #61718d;border-radius:9px;padding:10px;width:100%;font-size:1rem}label{display:block;font-size:.9rem;margin:12px 0 4px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.note{font-size:.85rem;color:#b8c5dd;line-height:1.55}.error{color:#ffb2b2}.status{font-size:.9rem;min-height:1.4em}.big{font-size:1.4rem;font-weight:700}hr{border:0;border-top:1px solid #344761;margin:16px 0}a{color:#bcaeff}footer{font-size:.8rem;color:#aab8d2;line-height:1.5}ul{padding-left:20px}
+</style></head><body>
+<div class="row"><h1>🛰️ SOL Crypto Watchtower</h1><span class="tag">READ-ONLY</span></div>
+<p class="sub">Your XRP + XLM phone dashboard</p>
+<div class="card"><div class="row"><h2>Market snapshot</h2><button id="refresh">Refresh</button></div><p id="status" class="status" role="status">Tap Refresh to load live prices.</p><div id="coins"></div><p class="note" id="updated">No prices loaded yet.</p></div>
+<div class="card"><h2>Your positions (optional)</h2><p class="note">Amounts stay in this browser on this phone. No wallet connection or password needed.</p>
+<div class="grid"><div><label for="xrpQty">XRP quantity</label><input id="xrpQty" type="number" min="0" step="any" inputmode="decimal" placeholder="0"></div><div><label for="xrpCost">XRP total spent ($)</label><input id="xrpCost" type="number" min="0" step="any" inputmode="decimal" placeholder="0"></div>
+<div><label for="xlmQty">XLM quantity</label><input id="xlmQty" type="number" min="0" step="any" inputmode="decimal" placeholder="0"></div><div><label for="xlmCost">XLM total spent ($)</label><input id="xlmCost" type="number" min="0" step="any" inputmode="decimal" placeholder="0"></div></div>
+<p><button id="save">Save positions</button> <span id="saved" class="tag"></span></p><div id="portfolio" aria-live="polite"></div></div>
+<div class="card"><h2>Movement watch</h2><label for="threshold">Alert threshold: absolute 24-hour change (%)</label><input id="threshold" type="number" min="0.1" max="1000" step=".1" value="5" inputmode="decimal">
+<p id="alerts" class="note">No market data yet.</p><p class="note">Alerts appear here only while you open or refresh this page. No background monitoring or push notifications in this version.</p></div>
+<div class="card"><h2>How to use on Android</h2><p class="note">Open this HTML file in Chrome or host it on a static website. For a home-screen shortcut, publish it to a static host, open the HTTPS page in Chrome, tap ⋮ → Add to Home screen (wording varies). Hosting is not included. Do not publish any wallet details or secrets in the HTML source.</p></div>
+<footer>Market data: CoinGecko public API; subject to connectivity, CORS and rate limits. If data fails, the dashboard shows an error instead of invented prices. Prices may be delayed. Not financial advice. Never enter ELLIPAL seed words, private keys or passwords here.</footer>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const ids=["xrpQty","xrpCost","xlmQty","xlmCost"];
+let prices=null;
+function money(n,d=2){return Number.isFinite(n)?new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:d,minimumFractionDigits:d}).format(n):"—"}
+function pct(n){return typeof n==="number"&&Number.isFinite(n)?(n>0?"+":"")+n.toFixed(2)+"%":"unavailable"}
+function safeNum(id){const v=$(id).value.trim();return v===""?0:Number(v)}
+function renderPortfolio(){
+ const node=$("portfolio");node.replaceChildren();
+ if(!prices){node.textContent="Load prices to calculate current values.";return}
+ let total=0,cost=0,has=false;
+ for(const sym of ["xrp","xlm"]){
+  const qty=safeNum(sym+"Qty"),spent=safeNum(sym+"Cost"),price=prices[sym]?.usd;
+  if(!Number.isFinite(qty)||qty<0||!Number.isFinite(spent)||spent<0){node.textContent="Enter non-negative numbers.";return}
+  if(qty===0)continue;has=true;const value=qty*price;total+=value;cost+=spent;
+  const line=document.createElement("p");
+  line.textContent=`${sym.toUpperCase()}: ${money(value)} value | ${spent>0?money(value-spent)+" gain/loss vs entered cost":"cost not entered"}`;
+  node.append(line)
+ }
+ if(!has){node.textContent="Enter your coin quantities above.";return}
+ const line=document.createElement("p");line.className="big";line.textContent="Total market value: "+money(total);node.prepend(line);
+ if(cost>0){const gain=document.createElement("p");gain.textContent="Combined gain/loss vs entered cost: "+money(total-cost);node.append(gain)}
+}
+function render(){
+ const node=$("coins");node.replaceChildren();
+ for(const sym of ["xrp","xlm"]){
+  const d=prices[sym],wrap=document.createElement("div");wrap.className="row";
+  const name=document.createElement("strong");name.textContent=sym.toUpperCase();
+  const price=document.createElement("span");price.className="price";price.textContent=money(d.usd,5);
+  const move=document.createElement("span");move.className=Number(d.usd_24h_change)>=0?"up":"down";move.textContent="24h "+pct(d.usd_24h_change);
+  wrap.append(name,price,move);node.append(wrap,document.createElement("hr"))
+ }
+ const threshold=Number($("threshold").value),alerts=[];
+ if(Number.isFinite(threshold)&&threshold>0)for(const sym of ["xrp","xlm"]){
+  const change=prices[sym].usd_24h_change;
+  if(typeof change==="number"&&Math.abs(change)>=threshold)alerts.push(sym.toUpperCase()+" moved "+pct(change)+" in 24h. Review; this is not a trade signal.");
+ }
+ $("alerts").textContent=alerts.length?alerts.join(" "):"No moves exceed your threshold in the latest snapshot.";
+ renderPortfolio();
+}
+async function refresh(){
+ $("refresh").disabled=true;$("status").textContent="Loading market data…";$("status").className="status";
+ try{
+  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),15000);
+  let res;try{res=await fetch("https://api.coingecko.com/api/v3/simple/price?ids=ripple%2Cstellar&vs_currencies=usd&include_24hr_change=true",{signal:controller.signal,cache:"no-store"})}finally{clearTimeout(timer)}
+  if(!res.ok)throw new Error("API returned HTTP "+res.status);
+  const d=await res.json();
+  if(!Number.isFinite(d.ripple?.usd)||!Number.isFinite(d.stellar?.usd))throw new Error("Incomplete prices returned");
+  prices={xrp:d.ripple,xlm:d.stellar};render();
+  $("status").textContent="Live request completed.";$("updated").textContent="Last fetched: "+new Date().toLocaleString();
+ }catch(e){$("status").className="status error";$("status").textContent="Could not refresh: "+e.message+". Try again later or check your connection.";if(prices)$("updated").textContent+=" (displaying previously fetched prices)"}
+ finally{$("refresh").disabled=false}
+}
+try{const saved=JSON.parse(localStorage.getItem("sol-watch-positions")||"{}");for(const id of ids)if(saved[id]!==undefined)$(id).value=saved[id];const t=localStorage.getItem("sol-watch-threshold");if(t)$("threshold").value=t}catch(e){}
+$("save").onclick=()=>{for(const id of ids){const v=safeNum(id);if(!Number.isFinite(v)||v<0){$("saved").textContent="Check inputs";return}}
+ try{localStorage.setItem("sol-watch-positions",JSON.stringify(Object.fromEntries(ids.map(id=>[id,$(id).value]))));$("saved").textContent="Saved on this device";renderPortfolio()}catch(e){$("saved").textContent="Browser storage unavailable"}};
+$("threshold").onchange=()=>{try{localStorage.setItem("sol-watch-threshold",$("threshold").value)}catch(e){}if(prices)render()};
+$("refresh").onclick=refresh;
+refresh();
+</script></body></html>
